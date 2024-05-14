@@ -1,9 +1,11 @@
-const { google } = require('googleapis');
-const axios = require('axios');
-const cheerio = require('cheerio');
-const fs = require('fs').promises;
-const diff = require('diff');
-require('dotenv').config();
+import { google } from 'googleapis';
+import { chromium } from 'playwright';
+import { promises as fs } from 'fs';
+import fetch from 'node-fetch';
+import { diffLines } from 'diff';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // 環境変数からWebhook URLとGoogle Credentialsファイルパスを取得
 const teamsWebhookUrl = process.env.TEAMS_WEBHOOK_URL || process.env.TEAMS_TEST_WEBHOOK_URL;
@@ -39,21 +41,29 @@ const getUrlsFromSheet = async () => {
 };
 
 const fetchPageContent = async (url, retries = 3) => {
-    try {
-        const response = await axios.get(url);
-        const $ = cheerio.load(response.data);
-        const textContent = $('body').text();
-        return { content: textContent, title: $('title').text() };
-    } catch (error) {
-        if (retries > 0) {
-            console.error(`Error fetching the page, retrying... (${retries} retries left)`);
-            return fetchPageContent(url, retries - 1);
-        } else {
-            console.error(`Failed to fetch the page: ${error}`);
-            return null;
+    for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext({
+                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            });
+            const page = await context.newPage();
+            await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+
+            const content = await page.evaluate(() => document.body.innerText);
+            const title = await page.title();
+
+            await browser.close();
+            return { content, title };
+        } catch (error) {
+            console.error(`Attempt ${attempt + 1} failed: ${error}`);
+            if (attempt === retries - 1) {
+                return null;
+            }
         }
     }
 };
+
 
 const checkIfNewOrUpdated = async (url) => {
     const pageData = await fetchPageContent(url);
@@ -77,7 +87,7 @@ const checkIfNewOrUpdated = async (url) => {
 
     if (newContent !== lastContent) {
         await fs.writeFile(lastContentFile, newContent, 'utf-8');
-        const changes = diff.diffLines(lastContent, newContent).filter(change => change.added || change.removed);
+        const changes = diffLines(lastContent, newContent).filter(change => change.added || change.removed);
         return { updated: true, isNew, title: newTitle, changes };
     }
     return { updated: false, isNew };
@@ -103,7 +113,11 @@ ${changes.map(change => (change.added ? `+ ${trimString(change.value)}` : change
             )).join('\n')
     };
 
-    await axios.post(teamsWebhookUrl, message);
+    await fetch(teamsWebhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: message.text })
+    });
 };
 
 const sendNewUrlNotification = async (newUrls) => {
@@ -114,7 +128,11 @@ const sendNewUrlNotification = async (newUrls) => {
             newUrls.map(({ url, title }) => `- [${title}](${url})\n`).join('\n')
     };
 
-    await axios.post(teamsWebhookUrl, message);
+    await fetch(teamsWebhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: message.text })
+    });
 };
 
 const sendErrorNotification = async (errors) => {
@@ -125,7 +143,11 @@ const sendErrorNotification = async (errors) => {
             errors.map(url => `- ${url}\n`).join('\n')
     };
 
-    await axios.post(teamsWebhookUrl, message);
+    await fetch(teamsWebhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: message.text })
+    });
 };
 
 const checkForUpdates = async () => {

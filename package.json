@@ -1,7 +1,8 @@
 {
   "name": "update-notifier",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Monitor web pages for updates and send notifications",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -9,11 +10,10 @@
   },
   "author": "Toshiyuki Ichige",
   "dependencies": {
-    "@slack/webhook": "^7.0.2",
-    "axios": "^1.6.8",
-    "cheerio": "^1.0.0-rc.12",
     "diff": "^5.2.0",
     "dotenv": "^16.4.5",
-    "googleapis": "^137.1.0"
+    "googleapis": "^137.1.0",
+    "node-fetch": "^3.3.2",
+    "playwright": "^1.44.0"
   }
 }
