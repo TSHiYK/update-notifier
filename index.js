@@ -6,7 +6,7 @@ const diff = require('diff');
 require('dotenv').config();
 
 // 環境変数からWebhook URLとGoogle Credentialsファイルパスを取得
-const teamsWebhookUrl = process.env.TEAMS_WEBHOOK_URL;
+const teamsWebhookUrl = process.env.TEAMS_WEBHOOK_URL || process.env.TEAMS_TEST_WEBHOOK_URL;
 const spreadsheetId = process.env.SPREADSHEET_ID;
 const googleCredentialsPath = process.env.GOOGLE_CREDENTIALS_PATH;
 
@@ -92,11 +92,13 @@ const sendUpdateNotification = async (updates) => {
     const message = {
         text: '以下のページが更新されました:\n\n' +
             updates.map(({ url, title, changes }) => (
-                `${url} のページが更新されました！
-タイトル: ${title}
+                `**${url} のページが更新されました！**
+**タイトル:** ${title}
 
-変更点:
-${changes.map(change => (change.added ? `+ ${trimString(change.value)}` : change.removed ? `- ${trimString(change.value)}` : '')).join('\n')}\n\n`
+**変更点:**
+\`\`\`diff
+${changes.map(change => (change.added ? `+ ${trimString(change.value)}` : change.removed ? `- ${trimString(change.value)}` : '')).join('\n')}
+\`\`\`\n\n`
             )).join('\n')
     };
 
@@ -108,7 +110,7 @@ const sendNewUrlNotification = async (newUrls) => {
 
     const message = {
         text: '以下の新しいURLが追加されました:\n\n' +
-            newUrls.map(({ url, title }) => `- ${url} (タイトル: ${title})\n`).join('\n')
+            newUrls.map(({ url, title }) => `- [${title}](${url})\n`).join('\n')
     };
 
     await axios.post(teamsWebhookUrl, message);
