@@ -40,15 +40,22 @@ const getUrlsFromSheet = async () => {
     return response.data.values.flat();
 };
 
-const fetchPageContent = async (url, page, retries = 5) => {
+const fetchPageContent = async (url, page, retries = 3) => {
     for (let attempt = 0; attempt < retries; attempt++) {
         try {
-            await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+            await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
             const content = await page.evaluate(() => document.body.innerText);
             const title = await page.title();
             return { content, title };
         } catch (error) {
             console.error(`Attempt ${attempt + 1} failed for ${url}: ${error}`);
+            if (error.message.includes('net::ERR_ABORTED')) {
+                console.warn(`Request aborted for ${url}. Retrying...`);
+            } else if (error.message.includes('Page crashed')) {
+                console.warn(`Page crashed for ${url}. Retrying...`);
+                await page.close();
+                page = await page.context().newPage();
+            }
             if (attempt === retries - 1) {
                 return null;
             }
@@ -156,7 +163,6 @@ const checkForUpdates = async () => {
     const updatePromises = urls.map(async (url) => {
         const page = await context.newPage();
         const result = await checkIfNewOrUpdated(url, page);
-        await page.close();
 
         if (result.error) {
             errors.push(url);
@@ -167,6 +173,8 @@ const checkForUpdates = async () => {
         } else {
             console.log(`No updates detected for ${url}.`);
         }
+
+        await page.close();
     });
 
     await Promise.allSettled(updatePromises);
