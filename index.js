@@ -40,23 +40,15 @@ const getUrlsFromSheet = async () => {
     return response.data.values.flat();
 };
 
-const fetchPageContent = async (url, retries = 3) => {
+const fetchPageContent = async (url, page, retries = 5) => {
     for (let attempt = 0; attempt < retries; attempt++) {
         try {
-            const browser = await chromium.launch({ headless: true });
-            const context = await browser.newContext({
-                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            });
-            const page = await context.newPage();
             await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
-
             const content = await page.evaluate(() => document.body.innerText);
             const title = await page.title();
-
-            await browser.close();
             return { content, title };
         } catch (error) {
-            console.error(`Attempt ${attempt + 1} failed: ${error}`);
+            console.error(`Attempt ${attempt + 1} failed for ${url}: ${error}`);
             if (attempt === retries - 1) {
                 return null;
             }
@@ -64,9 +56,8 @@ const fetchPageContent = async (url, retries = 3) => {
     }
 };
 
-
-const checkIfNewOrUpdated = async (url) => {
-    const pageData = await fetchPageContent(url);
+const checkIfNewOrUpdated = async (url, page) => {
+    const pageData = await fetchPageContent(url, page);
     if (!pageData) return { updated: false, isNew: false, error: true };
 
     const newContent = pageData.content;
@@ -157,8 +148,16 @@ const checkForUpdates = async () => {
     const newUrls = [];
     const errors = [];
 
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    });
+
     const updatePromises = urls.map(async (url) => {
-        const result = await checkIfNewOrUpdated(url);
+        const page = await context.newPage();
+        const result = await checkIfNewOrUpdated(url, page);
+        await page.close();
+
         if (result.error) {
             errors.push(url);
         } else if (result.isNew) {
@@ -170,7 +169,9 @@ const checkForUpdates = async () => {
         }
     });
 
-    await Promise.all(updatePromises);
+    await Promise.allSettled(updatePromises);
+    await browser.close();
+
     await sendUpdateNotification(updates);
     await sendNewUrlNotification(newUrls);
     await sendErrorNotification(errors);
