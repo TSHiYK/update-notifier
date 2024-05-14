@@ -42,7 +42,10 @@ const fetchPageContent = async (url, retries = 3) => {
     try {
         const response = await axios.get(url);
         const $ = cheerio.load(response.data);
-        return { content: $('body').html(), title: $('title').text() };
+        const textContent = $('body').text();
+        const images = $('img').map((i, el) => $(el).attr('src')).get().join('\n');
+        const links = $('a').map((i, el) => $(el).attr('href')).get().join('\n');
+        return { content: textContent + '\n' + images + '\n' + links, title: $('title').text() };
     } catch (error) {
         if (retries > 0) {
             console.error(`Error fetching the page, retrying... (${retries} retries left)`);
